@@ -36,6 +36,9 @@ from surprise import Reader, Dataset
 from surprise import SVD, NormalPredictor, BaselineOnly, KNNBasic, NMF
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import CountVectorizer
+#Additional librabries
+from scipy.sparse import csr_matrix
+from sklearn.neighbors import NearestNeighbors
 
 # Importing data
 movies_df = pd.read_csv('resources/data/movies.csv',sep = ',',delimiter=',')
@@ -48,17 +51,14 @@ model=pickle.load(open('resources/models/SVD.pkl', 'rb'))
 def prediction_item(item_id):
     """Map a given favourite movie to users within the
        MovieLens dataset with the same preference.
-
     Parameters
     ----------
     item_id : int
         A MovieLens Movie ID.
-
     Returns
     -------
     list
         User IDs of users with similar high ratings for the given movie.
-
     """
     # Data preprosessing
     reader = Reader(rating_scale=(0, 5))
@@ -73,17 +73,14 @@ def prediction_item(item_id):
 def pred_movies(movie_list):
     """Maps the given favourite movies selected within the app to corresponding
     users within the MovieLens dataset.
-
     Parameters
     ----------
     movie_list : list
         Three favourite movies selected by the app user.
-
     Returns
     -------
     list
         User-ID's of users with similar high ratings for each movie.
-
     """
     # Store the id of users
     id_store=[]
@@ -97,6 +94,30 @@ def pred_movies(movie_list):
             id_store.append(pred.uid)
     # Return a list of user id's
     return id_store
+
+#Preprocessing for aditional algorithm
+
+#Remove timestamp from ratings data and get unique user values for each movie ID
+final_dataset = ratings_df.pivot(index='movieId',columns='userId',values='rating')
+
+#Impute Nan's
+final_dataset.fillna(0,inplace=True)
+
+#Aggregate the number of users who voted and the number of movies that were voted.
+no_user_voted = ratings_df.groupby('movieId')['rating'].agg('count')
+no_movies_voted = ratings_df.groupby('userId')['rating'].agg('count')
+
+#Set threshold for users and movies
+final_dataset = final_dataset.loc[no_user_voted[no_user_voted > 10].index,:]
+final_dataset = final_dataset.loc[:,no_movies_voted[no_movies_voted > 50].index]
+
+#Reduce sparsity in the data
+csr_data = csr_matrix(final_dataset.values)
+final_dataset.reset_index(inplace=True)
+
+#Build a recommender model
+knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=20, n_jobs=-1)
+knn.fit(csr_data)
 
 # !! DO NOT CHANGE THIS FUNCTION SIGNATURE !!
 # You are, however, encouraged to change its content.  
@@ -146,3 +167,21 @@ def collab_model(movie_list,top_n=10):
     for i in top_indexes[:top_n]:
         recommended_movies.append(list(movies_df['title'])[i])
     return recommended_movies
+
+def get_movie_recommendation(movie_name):
+    n_movies_to_reccomend = 10
+    movie_list = movies[movies['title'].str.contains(movie_name)]  
+    if len(movie_list):        
+        movie_idx= movie_list.iloc[0]['movieId']
+        movie_idx = final_dataset[final_dataset['movieId'] == movie_idx].index[0]
+        distances , indices = knn.kneighbors(csr_data[movie_idx],n_neighbors=n_movies_to_reccomend+1)    
+        rec_movie_indices = sorted(list(zip(indices.squeeze().tolist(),distances.squeeze().tolist())),key=lambda x: x[1])[:0:-1]
+        recommend_frame = []
+        for val in rec_movie_indices:
+            movie_idx = final_dataset.iloc[val[0]]['movieId']
+            idx = movies[movies['movieId'] == movie_idx].index
+            recommend_frame.append({'Title':movies.iloc[idx]['title'].values[0],'Distance':val[1]})
+        df = pd.DataFrame(recommend_frame,index=range(1,n_movies_to_reccomend+1))
+        return df
+    else:
+        return "No movies found. Please check your input"
