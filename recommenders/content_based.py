@@ -80,7 +80,7 @@ def content_model(movie_list,top_n=10):
     """
     # Initializing the empty list of recommended movies
     recommended_movies = []
-    data = data_preprocessing(27000)
+    data = data_preprocessing(209171)
     # Instantiating and generating the count matrix
     count_vec = CountVectorizer()
     count_matrix = count_vec.fit_transform(data['keyWords'])
@@ -104,9 +104,9 @@ def content_model(movie_list,top_n=10):
     # Store movie names
     recommended_movies = []
     # Appending the names of movies
-    top_50_indexes = list(listings.iloc[1:50].index)
+    top_10_indexes = list(listings.iloc[1:10].index)
     # Removing chosen movies
-    top_indexes = np.setdiff1d(top_50_indexes,[idx_1,idx_2,idx_3])
+    top_indexes = np.setdiff1d(top_10_indexes,[idx_1,idx_2,idx_3])
     for i in top_indexes[:top_n]:
         recommended_movies.append(list(movies['title'])[i])
     return recommended_movies
